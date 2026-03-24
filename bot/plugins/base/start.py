@@ -6,7 +6,7 @@ from bot.config import config
 from bot.database import MongoDB
 from bot.options import options
 from bot.utilities.helpers import DataEncoder, DataValidationError, PyroHelper, RateLimiter
-from bot.utilities.pyrofilters import PyroFilters
+from bot.utilities.pyrofilters import PyroFilters, SubscriptionMessage
 from bot.utilities.pyrotools import FileResolverModel, HelpCmd, Pyrotools
 from bot.utilities.schedule_manager import schedule_manager
 
@@ -82,7 +82,7 @@ class FileSender:
             ]
 
             for i_file_data in file_data_chunk:
-                send_files = await Pyrotools.send_media_group(
+                send_files = await Pyrotools.send_media_manager(
                     client=client,
                     chat_id=chat_id,
                     file_data=i_file_data,
@@ -124,8 +124,12 @@ async def file_start(
                 base64_string=base64_file_link,
                 backup_channel=config.BACKUP_CHANNEL,
             )
-        except DataValidationError:
-            await message.reply(text="Attempted to resolve link: Got invalid link.")
+        except (DataValidationError, IndexError):
+            await PyroHelper.option_message(
+                client=client,
+                message=message,
+                option_key=options.settings.INVALID_LINK_MESSAGE,
+            )
             return message.stop_propagation()
 
         send_files = await FileSender.codexbotz(
@@ -136,7 +140,11 @@ async def file_start(
             protect_content=config.PROTECT_CONTENT,
         )
         if not send_files:
-            await message.reply(text="Attempted to fetch files: Does not exist.")
+            await PyroHelper.option_message(
+                client=client,
+                message=message,
+                option_key=options.settings.FILE_DOES_NOT_EXIST,
+            )
             return message.stop_propagation()
     else:
         file_origin = file_document["file_origin"]
@@ -152,6 +160,14 @@ async def file_start(
 
     delete_n_seconds = options.settings.AUTO_DELETE_SECONDS
 
+    additional_message = None
+    if options.settings.ADDITIONAL_MESSAGE != 0:
+        additional_message = await PyroHelper.option_message(
+            client=client,
+            message=message,
+            option_key=options.settings.ADDITIONAL_MESSAGE,
+        )
+
     if delete_n_seconds != 0:
         schedule_delete_message = [msg.id for msg in send_files]
 
@@ -165,32 +181,45 @@ async def file_start(
             message=message,
             option_key=auto_delete_message,
         )
-        schedule_delete_message.append(auto_delete_message_reply.id)
+        if auto_delete_message_reply:
+            schedule_delete_message.append(auto_delete_message_reply.id)
+
+        if additional_message:
+            schedule_delete_message.append(additional_message.id)
 
         await schedule_manager.schedule_delete(
             client=client,
             chat_id=message.chat.id,
             message_ids=schedule_delete_message,
             delete_n_seconds=delete_n_seconds,
+            base64_file_link=base64_file_link,
         )
+
     return message.stop_propagation()
 
 
-@Client.on_message(filters.command("start") & filters.private, group=1)
+@Client.on_message(filters.command("start") & filters.private, group=69)
 @RateLimiter.hybrid_limiter(func_count=1)
 async def return_start(
     client: Client,
-    message: Message,
+    message: SubscriptionMessage,
 ) -> Message | None:
     """
     Handle start command without files or not subscribed.
     """
 
-    channels_n_invite = client.channels_n_invite  # type: ignore[reportAttributeAccessIssue]
+    if hasattr(message, "user_is_banned") and message.user_is_banned:
+        return await PyroHelper.option_message(
+            client=client,
+            message=message,
+            option_key=options.settings.BANNED_USER_MESSAGE,
+        )
+
+    channels_n_invite = config.channels_n_invite
     buttons = []
 
-    for channel, invite in channels_n_invite.items():
-        buttons.append([InlineKeyboardButton(text=channel, url=invite)])
+    for channel, channel_info in channels_n_invite.items():
+        buttons.append([InlineKeyboardButton(text=channel, url=channel_info["invite_link"])])
 
     if message.command[1:]:
         link = f"https://t.me/{client.me.username}?start={message.command[1]}"  # type: ignore[reportOptionalMemberAccess]

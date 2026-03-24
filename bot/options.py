@@ -9,18 +9,31 @@ class SettingsModel(BaseModel):
 
     Parameters:
         FORCE_SUB_MESSAGE (str | int): The message to display when a user is not subscribed.
+        BANNED_USER_MESSAGE (str | int): The message to display if user is banned from using the bot.
         START_MESSAGE (str | int): The message to display when a user starts the bot.
+        ADDITIONAL_MESSAGE (str | int): The message to display after a user recieved a file, set to 0 to disable.
         USER_REPLY_TEXT (str | int): The text to reply to a user.
+        CUSTOM_CAPTION (str | int): Custom caption to every files sent, set 0 to disable.
         AUTO_DELETE_MESSAGE (str | int): The message to display when a file is deleted.
-        AUTO_DELETE_SECONDS (int): The number of seconds to wait before deleting a file.
+        INVALID_LINK_MESSAGE (str | int): The message to display when a file link is invalid.
+        FILE_DOES_NOT_EXIST (str | int): The message to display when a file does not exists from codexbotz links.
+
+        AUTO_DELETE_SECONDS (int): The number of seconds to wait before deleting a file, set to 0 to disable.
         GLOBAL_MODE (bool): Whether the bot is in global mode.
         BACKUP_FILES (bool): Whether to backup files.
     """
 
     FORCE_SUB_MESSAGE: str | int = "Please join the channel(s) first."
+    BANNED_USER_MESSAGE: str | int = "You have been banned from using this bot."
     START_MESSAGE: str | int = "I am a file-sharing bot."
+    ADDITIONAL_MESSAGE: str | int = 0
     USER_REPLY_TEXT: str | int = "idk"
+
+    CUSTOM_CAPTION: str | int = 0
     AUTO_DELETE_MESSAGE: str | int = "This file(s) will be deleted within {} minutes"
+    INVALID_LINK_MESSAGE: str | int = "Attempted to resolve link: Got invalid link."
+    FILE_DOES_NOT_EXIST: str | int = "Attempted to fetch files: Does not exist."
+
     AUTO_DELETE_SECONDS: int = 300
     GLOBAL_MODE: bool = False
     BACKUP_FILES: bool = True

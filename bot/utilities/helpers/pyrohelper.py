@@ -1,10 +1,11 @@
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from pyrogram import raw
 from pyrogram.client import Client
-from pyrogram.types import Message
+from pyrogram.errors import UserIsBlocked
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.config import config
+from bot.config import ChannelInfo, config
 
 
 class NoInviteLinkError(Exception):
@@ -12,11 +13,16 @@ class NoInviteLinkError(Exception):
         super().__init__(f"{channel} has no invite link")
 
 
+class CustomCaption(TypedDict):
+    text: str | None
+    inelinekeyboardmarkup: list[list[InlineKeyboardButton]] | None
+
+
 class PyroHelper:
     """Helper class for additional Pyrogram functions."""
 
     @staticmethod
-    async def get_channel_invites(client: Client, channels: list[int]) -> dict[str, int]:
+    async def get_channel_invites(client: Client, channels: list[int]) -> dict[str, ChannelInfo]:
         """
         Get invite links for a list of channels.
 
@@ -27,26 +33,19 @@ class PyroHelper:
                 List of channel IDs to get invite links for.
 
         Returns:
-            dict[str, int]:
-                Dictionary with channel titles as keys and their invite links as values.
+            dict[str, ChannelInfo]:
+                Dictionary with channel titles as keys and ChannelInfo.
 
         Raises:
             ValueError:
                 If any channel in the list does not have an invite link.
 
-        Example:
-            make sure the bot have required permissions to get invites
-            >>> helper = PyroHelper()
-
-            >>> channels = [123456789, 987654321]
-            >>> invite_links = await helper.get_channel_invites(app, channels)
-            >>> print(invite_links)
-            {
-                "Channel Title 1": "https://t.me/joinchat/ABCDE...",
-                "Channel Title 2": "https://t.me/joinchat/FGHIJ..."
-            }
         """
-        channels_n_invite = {}
+        if not channels:
+            return {}
+
+        channels_n_invite: dict[str, ChannelInfo] = {}
+
         for channel_id in channels:
             channel = await client.get_chat(chat_id=channel_id)
             get_link = await client.invoke(
@@ -58,8 +57,13 @@ class PyroHelper:
             )
 
             if get_link is not None:
-                channel_invite = get_link.link  # type: ignore[reportAttributeAccessIssue]
-                channels_n_invite[channel.title] = channel_invite
+                channel_invite = get_link.link  # type: ignore[reportAttributeAccessIssue]if channel.title not in channels_n_invite:
+                channels_n_invite[channel.title] = ChannelInfo(
+                    is_private=bool(channel.username is None),  # type: ignore[reportAttributeAccessIssue]
+                    invite_link=channel_invite,
+                    channel_id=channel_id,
+                )
+
             else:
                 raise NoInviteLinkError(channel_id)
 
@@ -71,14 +75,32 @@ class PyroHelper:
         message: Message,
         option_key: str | int,
         **kwargs: Any,  # noqa: ANN401
-    ) -> Message:
+    ) -> Message | None:
         if isinstance(option_key, int):
             message_origin = await client.get_messages(chat_id=config.BACKUP_CHANNEL, message_ids=option_key)
 
             if message_origin:
-                return cast(Message, await message_origin.copy(chat_id=message.chat.id, **kwargs))  # pyright: ignore[reportCallIssue]
+                return cast("Message", await message_origin.copy(chat_id=message.chat.id, **kwargs))  # pyright: ignore[reportCallIssue]
+        try:
+            return await message.reply(
+                text=str(option_key),
+                **kwargs,
+            )
+        except UserIsBlocked:
+            return None
 
-        return await message.reply(
-            text=str(option_key),
-            **kwargs,
-        )
+    @staticmethod
+    async def custom_caption(client: Client, option_key: str) -> CustomCaption:
+        if isinstance(option_key, int):
+            message_origin = await client.get_messages(chat_id=config.BACKUP_CHANNEL, message_ids=option_key)
+
+            message = message_origin[0] if isinstance(message_origin, list) else message_origin
+
+            return CustomCaption(
+                text=message.text.markdown if message.text else None,
+                inelinekeyboardmarkup=message.reply_markup.inline_keyboard
+                if isinstance(message.reply_markup, InlineKeyboardMarkup)
+                else None,
+            )
+
+        return CustomCaption(text=str(option_key), inelinekeyboardmarkup=None)

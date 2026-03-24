@@ -24,6 +24,16 @@ logging.basicConfig(
     handlers=[RichHandler()],
 )
 
+logger = logging.getLogger(__name__)
+
+try:
+    import uvloop  # type: ignore[reportMissingImports]
+
+    uvloop.install()
+    logger.info("Using UVLoop for enhanced performance")
+except ImportError:
+    logger.warning("UVLoop not installed. Falling back to asyncio")
+
 background_tasks = set()
 
 
@@ -42,9 +52,13 @@ async def main() -> None:
     await options.load_settings()
     await bot_client.start()
     # Bot setup
+
     try:
-        channels_n_invite = await PyroHelper.get_channel_invites(client=bot_client, channels=config.FORCE_SUB_CHANNELS)
-        bot_client.channels_n_invite = channels_n_invite  # pyright: ignore[reportAttributeAccessIssue]
+        channels_n_invite = await PyroHelper.get_channel_invites(
+            client=bot_client,
+            channels=config.FORCE_SUB_CHANNELS,
+        )
+        config.channels_n_invite = channels_n_invite
     except (ChannelInvalid, ChatAdminRequired, NoInviteLinkError) as e:
         sys.exit(f"Please add and give me permission in FORCE_SUB_CHANNELS and BACKUP_CHANNEL:\n{e}")
 
